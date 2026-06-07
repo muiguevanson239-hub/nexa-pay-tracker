@@ -1,65 +1,278 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
+
+type Transaction = {
+  id: string;
+  type: "income" | "expense";
+  amount: number;
+  note: string;
+  created_at: string;
+};
 
 export default function Home() {
+  // ---------------- AUTH ----------------
+  const [user, setUser] = useState<any>(null);
+  const [email, setEmail] = useState("");
+
+  // ---------------- DATA ----------------
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+  const [type, setType] = useState<"income" | "expense">("expense");
+
+  // ---------------- PAYMENT ----------------
+  const [paymentCode, setPaymentCode] = useState("");
+  const [isPremium, setIsPremium] = useState(false);
+
+  // ---------------- INIT AUTH ----------------
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setUser(session?.user || null);
+      }
+    );
+
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  // ---------------- LOGIN ----------------
+  async function login() {
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+    });
+
+    if (error) return alert(error.message);
+
+    alert("Check your email for login link");
+  }
+
+  // ---------------- LOGOUT ----------------
+  async function logout() {
+    await supabase.auth.signOut();
+    setUser(null);
+    setTransactions([]);
+  }
+
+  // ---------------- LOAD TRANSACTIONS ----------------
+  async function loadTransactions(userId: string) {
+    const { data } = await supabase
+      .from("transactions")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+
+    setTransactions(data || []);
+  }
+
+  // ---------------- CHECK PREMIUM ----------------
+  async function checkPremium(userId: string) {
+    const { data } = await supabase
+      .from("payments")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("status", "approved");
+
+    setIsPremium((data?.length || 0) > 0);
+  }
+
+  // ---------------- EFFECTS ----------------
+  useEffect(() => {
+    if (user) {
+      loadTransactions(user.id);
+      checkPremium(user.id);
+    }
+  }, [user]);
+
+  // ---------------- ADD TRANSACTION ----------------
+  async function addTransaction() {
+    if (!user) return;
+
+    // FREE LIMIT
+    if (!isPremium && transactions.length >= 5) {
+      alert("Upgrade to Premium to continue");
+      return;
+    }
+
+    await supabase.from("transactions").insert([
+      {
+        user_id: user.id,
+        type,
+        amount: Number(amount),
+        note,
+      },
+    ]);
+
+    setAmount("");
+    setNote("");
+    loadTransactions(user.id);
+  }
+
+  // ---------------- SUBMIT PAYMENT CODE ----------------
+  async function submitPaymentCode() {
+    if (!user || !paymentCode) return;
+
+    const { error } = await supabase.from("payments").insert([
+      {
+        user_id: user.id,
+        code: paymentCode,
+        status: "pending",
+      },
+    ]);
+
+    if (error) return alert("Failed to submit");
+
+    alert("Payment submitted. Waiting approval.");
+    setPaymentCode("");
+  }
+
+  // ---------------- CALCULATIONS ----------------
+  const income = transactions
+    .filter((t) => t.type === "income")
+    .reduce((a, b) => a + Number(b.amount), 0);
+
+  const expense = transactions
+    .filter((t) => t.type === "expense")
+    .reduce((a, b) => a + Number(b.amount), 0);
+
+  const balance = income - expense;
+
+  // ---------------- UI ----------------
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+    <main className="min-h-screen bg-black text-white p-4">
+      <div className="max-w-md mx-auto space-y-4">
+
+        <h1 className="text-2xl font-bold">NexaPay Tracker</h1>
+
+        {/* AUTH */}
+        {!user ? (
+          <div className="bg-zinc-900 p-3 space-y-2">
+            <input
+              className="w-full p-2 text-black"
+              placeholder="Enter email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+            <button onClick={login} className="w-full bg-green-600 py-2">
+              Login / Register
+            </button>
+          </div>
+        ) : (
+          <div className="flex justify-between text-sm text-gray-400">
+            <p>{user.email}</p>
+            <button onClick={logout} className="text-red-400">
+              Logout
+            </button>
+          </div>
+        )}
+
+        {/* APP */}
+        {user && (
+          <>
+            {/* BALANCE */}
+            <div className="bg-zinc-900 p-4">
+              <p className="text-sm text-gray-400">Balance</p>
+              <h2 className="text-3xl font-bold">KES {balance}</h2>
+            </div>
+
+            {/* SUMMARY */}
+            <div className="flex gap-2">
+              <div className="flex-1 bg-green-600 p-2">
+                + {income}
+              </div>
+              <div className="flex-1 bg-red-600 p-2">
+                - {expense}
+              </div>
+            </div>
+
+            {/* INPUTS */}
+            <select
+              className="w-full p-2 text-black"
+              value={type}
+              onChange={(e) => setType(e.target.value as any)}
+            >
+              <option value="expense">Expense</option>
+              <option value="income">Income</option>
+            </select>
+
+            <input
+              className="w-full p-2 text-black"
+              placeholder="Amount"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+
+            <input
+              className="w-full p-2 text-black"
+              placeholder="Note"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+
+            <button
+              onClick={addTransaction}
+              className="w-full bg-blue-600 py-2"
+            >
+              Add Transaction
+            </button>
+
+            {/* PREMIUM BLOCK */}
+            <div className="bg-zinc-900 p-3 mt-4 space-y-2">
+              <p className="text-sm text-gray-300">
+                💰 Upgrade to Premium (KES 100 via M-Pesa)
+              </p>
+
+              <p className="text-xs text-gray-400">
+                Send to: <b>07XXXXXXXX</b>
+              </p>
+
+              <input
+                className="w-full p-2 text-black"
+                placeholder="Enter M-Pesa transaction code"
+                value={paymentCode}
+                onChange={(e) => setPaymentCode(e.target.value)}
+              />
+
+              <button
+                onClick={submitPaymentCode}
+                className="w-full bg-yellow-500 text-black py-2"
+              >
+                Submit Payment
+              </button>
+
+              {isPremium && (
+                <p className="text-green-400 text-sm">
+                  ✅ Premium Active
+                </p>
+              )}
+            </div>
+
+            {/* LIST */}
+            <div className="space-y-2 mt-4">
+              {transactions.map((t) => (
+                <div key={t.id} className="bg-zinc-800 p-2 flex justify-between">
+                  <div>
+                    <p className="font-bold">{t.note}</p>
+                    <p className="text-xs text-gray-400">
+                      {new Date(t.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+
+                  <p className={t.type === "income" ? "text-green-400" : "text-red-400"}>
+                    {t.type === "income" ? "+" : "-"}
+                    {t.amount}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </main>
   );
 }
