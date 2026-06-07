@@ -3,12 +3,19 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 
-type Props = {
-  user: any;
+type User = {
+  id: string;
+  phone: string;
+  pin: string;
+  created_at?: string;
+};
+
+type AddTransactionProps = {
+  user: User;
   onAdd: () => void;
 };
 
-export default function AddTransaction({ user, onAdd }: Props) {
+export default function AddTransaction({ user, onAdd }: AddTransactionProps) {
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [type, setType] = useState<"income" | "expense">("expense");
@@ -35,7 +42,7 @@ export default function AddTransaction({ user, onAdd }: Props) {
       <select
         className="w-full p-3 text-black rounded-xl"
         value={type}
-        onChange={(e) => setType(e.target.value as any)}
+        onChange={(e) => setType(e.target.value as "income" | "expense")}
       >
         <option value="expense">Expense</option>
         <option value="income">Income</option>

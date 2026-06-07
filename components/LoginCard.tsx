@@ -3,7 +3,18 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 
-export default function LoginCard({ setUser }: any) {
+type User = {
+  id: string;
+  phone: string;
+  pin: string;
+  created_at?: string;
+};
+
+type LoginCardProps = {
+  setUser: (user: User) => void;
+};
+
+export default function LoginCard({ setUser }: LoginCardProps) {
   const [phone, setPhone] = useState("");
   const [pin, setPin] = useState("");
 

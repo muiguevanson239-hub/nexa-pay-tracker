@@ -1,7 +1,19 @@
-export default function TransactionList({ transactions }: any) {
+type Transaction = {
+  id: string;
+  type: "income" | "expense";
+  amount: number;
+  note: string;
+  created_at: string;
+};
+
+type TransactionListProps = {
+  transactions: Transaction[];
+};
+
+export default function TransactionList({ transactions }: TransactionListProps) {
   return (
     <div className="space-y-2">
-      {transactions.map((t: any) => (
+      {transactions.map((t: Transaction) => (
         <div
           key={t.id}
           className="bg-zinc-900 p-3 rounded-xl flex justify-between"

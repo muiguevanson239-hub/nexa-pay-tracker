@@ -1,4 +1,10 @@
-export default function BalanceCard({ balance, income, expense }: any) {
+type BalanceCardProps = {
+  balance: number;
+  income: number;
+  expense: number;
+};
+
+export default function BalanceCard({ balance, income, expense }: BalanceCardProps) {
   return (
     <div className="bg-gradient-to-r from-green-500 to-emerald-600 p-5 rounded-2xl">
       <p className="text-xs opacity-80">Balance</p>

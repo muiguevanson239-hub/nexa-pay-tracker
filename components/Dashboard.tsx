@@ -8,6 +8,13 @@ import AddTransaction from "./AddTransaction";
 import TransactionList from "./TransactionList";
 import BottomNav from "./BottomNav";
 
+type User = {
+  id: string;
+  phone: string;
+  pin: string;
+  created_at?: string;
+};
+
 type Transaction = {
   id: string;
   type: "income" | "expense";
@@ -16,12 +23,25 @@ type Transaction = {
   created_at: string;
 };
 
-export default function Dashboard({ user }: { user: any }) {
+export default function Dashboard({ user }: { user: User }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [tab, setTab] = useState<"home" | "add" | "stats">("home");
 
-  // ✅ FIX: stable function (removes eslint warning)
-  const loadTransactions = useCallback(async () => {
+  useEffect(() => {
+    const fetchTransactions = async () => {
+      const { data } = await supabase
+        .from("transactions")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      setTransactions(data || []);
+    };
+
+    fetchTransactions();
+  }, [user.id]);
+
+  const refreshTransactions = useCallback(async () => {
     const { data } = await supabase
       .from("transactions")
       .select("*")
@@ -30,10 +50,6 @@ export default function Dashboard({ user }: { user: any }) {
 
     setTransactions(data || []);
   }, [user.id]);
-
-  useEffect(() => {
-    loadTransactions();
-  }, [loadTransactions]);
 
   const income = transactions
     .filter((t) => t.type === "income")
@@ -75,7 +91,7 @@ export default function Dashboard({ user }: { user: any }) {
         </div>
       )}
 
-      <BottomNav tab={tab} setTab={setTab} />
+      <BottomNav setTab={setTab} />
     </div>
   );
 }
