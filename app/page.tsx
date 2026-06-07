@@ -12,112 +12,81 @@ type Transaction = {
 };
 
 export default function Home() {
-  // AUTH
+  // ---------------- AUTH (CUSTOM PHONE LOGIN) ----------------
   const [user, setUser] = useState<any>(null);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [phone, setPhone] = useState("");
+  const [pin, setPin] = useState("");
 
-  // APP DATA
+  // ---------------- APP DATA ----------------
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [type, setType] = useState<"income" | "expense">("expense");
 
-  // PAYMENT
+  // ---------------- PAYMENT ----------------
   const [paymentCode, setPaymentCode] = useState("");
   const [isPremium, setIsPremium] = useState(false);
 
-  // UI
-  const [loading, setLoading] = useState(false);
-
-  // AUTH INIT
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      setUser(data.user);
-    });
-
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setUser(session?.user || null);
-      }
-    );
-
-    return () => {
-      listener.subscription.unsubscribe();
-    };
-  }, []);
-
-  // LOGIN
+  // ---------------- LOGIN (PHONE + PIN) ----------------
   async function login() {
-    if (!email || !password) {
-      alert("Enter email and password");
+    const { data, error } = await supabase
+      .from("users")
+      .select("*")
+      .eq("phone", phone)
+      .eq("pin", pin)
+      .single();
+
+    if (error || !data) {
+      alert("Invalid phone or PIN");
       return;
     }
 
-    setLoading(true);
+    setUser(data);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    setLoading(false);
-
-    if (error) {
-      alert(error.message);
-    }
+    loadTransactions(data.id);
+    checkPremium(data.id);
   }
 
-  // SIGNUP
+  // ---------------- SIGNUP ----------------
   async function signup() {
-    if (!email || !password) {
-      alert("Enter email and password");
+    if (!phone || !pin) {
+      alert("Enter phone and PIN");
       return;
     }
 
-    if (password.length < 6) {
-      alert("Password must be at least 6 characters");
-      return;
-    }
-
-    setLoading(true);
-
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-    });
-
-    setLoading(false);
+    const { error } = await supabase.from("users").insert([
+      {
+        phone,
+        pin,
+      },
+    ]);
 
     if (error) {
-      alert(error.message);
+      alert("User already exists or error");
       return;
     }
 
-    alert("Account created successfully");
+    alert("Account created. You can now login.");
   }
 
-  // LOGOUT
-  async function logout() {
-    await supabase.auth.signOut();
+  // ---------------- LOGOUT ----------------
+  function logout() {
     setUser(null);
     setTransactions([]);
   }
 
-  // LOAD TRANSACTIONS
+  // ---------------- LOAD TRANSACTIONS ----------------
   async function loadTransactions(userId: string) {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("transactions")
       .select("*")
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
-    if (!error) {
-      setTransactions(data || []);
-    }
+    setTransactions(data || []);
   }
 
-  // CHECK PREMIUM
+  // ---------------- CHECK PREMIUM ----------------
   async function checkPremium(userId: string) {
     const { data } = await supabase
       .from("payments")
@@ -128,27 +97,19 @@ export default function Home() {
     setIsPremium((data?.length || 0) > 0);
   }
 
-  // USER DATA INIT
-  useEffect(() => {
-    if (!user) return;
-
-    loadTransactions(user.id);
-    checkPremium(user.id);
-  }, [user]);
-
-  // ADD TRANSACTION
+  // ---------------- ADD TRANSACTION ----------------
   async function addTransaction() {
     if (!user) return;
 
     const amountNumber = Number(amount);
 
     if (Number.isNaN(amountNumber) || amountNumber <= 0) {
-      alert("Enter valid amount");
+      alert("Invalid amount");
       return;
     }
 
     if (!isPremium && transactions.length >= 5) {
-      alert("Upgrade to Premium to continue");
+      alert("Upgrade to Premium");
       return;
     }
 
@@ -168,18 +129,12 @@ export default function Home() {
 
     setAmount("");
     setNote("");
-
     loadTransactions(user.id);
   }
 
-  // SUBMIT PAYMENT
+  // ---------------- PAYMENT ----------------
   async function submitPaymentCode() {
     if (!user) return;
-
-    if (!paymentCode.trim()) {
-      alert("Enter transaction code");
-      return;
-    }
 
     const { error } = await supabase.from("payments").insert([
       {
@@ -194,101 +149,82 @@ export default function Home() {
       return;
     }
 
-    alert("Payment submitted for review");
+    alert("Payment submitted");
     setPaymentCode("");
   }
 
-  // CALCULATIONS
+  // ---------------- CALCULATIONS ----------------
   const income = transactions
     .filter((t) => t.type === "income")
-    .reduce((sum, t) => sum + Number(t.amount), 0);
+    .reduce((a, b) => a + Number(b.amount), 0);
 
   const expense = transactions
     .filter((t) => t.type === "expense")
-    .reduce((sum, t) => sum + Number(t.amount), 0);
+    .reduce((a, b) => a + Number(b.amount), 0);
 
   const balance = income - expense;
 
+  // ---------------- UI ----------------
   return (
     <main className="min-h-screen bg-black text-white p-4">
       <div className="max-w-md mx-auto space-y-4">
-        <h1 className="text-3xl font-bold">
-          NexaPay Tracker
-        </h1>
+        <h1 className="text-3xl font-bold">NexaPay Tracker</h1>
 
+        {/* LOGIN */}
         {!user ? (
-          <div className="bg-zinc-900 rounded-lg p-4 space-y-3">
+          <div className="bg-zinc-900 p-4 space-y-3">
             <input
-              className="w-full p-3 rounded text-black"
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              className="w-full p-3 text-black"
+              placeholder="Phone number (07XXXXXXXX)"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
             />
 
             <input
-              type="password"
-              className="w-full p-3 rounded text-black"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              className="w-full p-3 text-black"
+              placeholder="4-digit PIN"
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
             />
 
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={login}
-                disabled={loading}
-                className="bg-green-600 py-3 rounded"
-              >
-                {loading ? "Loading..." : "Login"}
+            <div className="flex gap-2">
+              <button onClick={login} className="flex-1 bg-green-600 py-3">
+                Login
               </button>
 
-              <button
-                onClick={signup}
-                disabled={loading}
-                className="bg-blue-600 py-3 rounded"
-              >
+              <button onClick={signup} className="flex-1 bg-blue-600 py-3">
                 Sign Up
               </button>
             </div>
           </div>
         ) : (
           <>
-            <div className="flex justify-between items-center text-sm text-gray-400">
-              <span>{user.email}</span>
-
-              <button
-                onClick={logout}
-                className="text-red-400"
-              >
+            {/* HEADER */}
+            <div className="flex justify-between text-sm text-gray-400">
+              <span>{user.phone}</span>
+              <button onClick={logout} className="text-red-400">
                 Logout
               </button>
             </div>
 
-            <div className="bg-zinc-900 p-4 rounded-lg">
-              <p className="text-gray-400 text-sm">
-                Current Balance
-              </p>
-
-              <h2 className="text-3xl font-bold">
-                KES {balance.toLocaleString()}
-              </h2>
+            {/* BALANCE */}
+            <div className="bg-zinc-900 p-4">
+              <p className="text-sm text-gray-400">Balance</p>
+              <h2 className="text-3xl font-bold">KES {balance}</h2>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div className="bg-green-700 p-3 rounded">
-                + KES {income.toLocaleString()}
-              </div>
-
-              <div className="bg-red-700 p-3 rounded">
-                - KES {expense.toLocaleString()}
-              </div>
+            {/* SUMMARY */}
+            <div className="flex gap-2">
+              <div className="flex-1 bg-green-600 p-2">+ {income}</div>
+              <div className="flex-1 bg-red-600 p-2">- {expense}</div>
             </div>
 
+            {/* INPUTS */}
             <select
-              className="w-full p-3 rounded text-black"
+              className="w-full p-2 text-black"
               value={type}
               onChange={(e) =>
-                setType(e.target.value as "income" | "expense")
+                setType(e.target.value as any)
               }
             >
               <option value="expense">Expense</option>
@@ -296,45 +232,42 @@ export default function Home() {
             </select>
 
             <input
-              className="w-full p-3 rounded text-black"
+              className="w-full p-2 text-black"
               placeholder="Amount"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
             />
 
             <input
-              className="w-full p-3 rounded text-black"
-              placeholder="Description"
+              className="w-full p-2 text-black"
+              placeholder="Note"
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />
 
             <button
               onClick={addTransaction}
-              className="w-full bg-blue-600 py-3 rounded"
+              className="w-full bg-blue-600 py-3"
             >
               Add Transaction
             </button>
 
-            <div className="bg-zinc-900 p-4 rounded-lg space-y-2">
+            {/* PREMIUM */}
+            <div className="bg-zinc-900 p-4 space-y-2">
               <p>Premium Upgrade (KES 100)</p>
 
-              <p className="text-sm text-gray-400">
-                Send payment to your M-Pesa number and submit the code below.
-              </p>
-
               <input
-                className="w-full p-3 rounded text-black"
-                placeholder="M-Pesa Transaction Code"
+                className="w-full p-2 text-black"
+                placeholder="M-Pesa Code"
                 value={paymentCode}
                 onChange={(e) => setPaymentCode(e.target.value)}
               />
 
               <button
                 onClick={submitPaymentCode}
-                className="w-full bg-yellow-500 text-black py-3 rounded"
+                className="w-full bg-yellow-500 text-black py-2"
               >
-                Submit Payment
+                Submit
               </button>
 
               {isPremium && (
@@ -344,18 +277,17 @@ export default function Home() {
               )}
             </div>
 
+            {/* TRANSACTIONS */}
             <div className="space-y-2">
               {transactions.map((t) => (
                 <div
                   key={t.id}
-                  className="bg-zinc-800 p-3 rounded flex justify-between"
+                  className="bg-zinc-800 p-3 flex justify-between"
                 >
                   <div>
                     <p>{t.note}</p>
                     <p className="text-xs text-gray-400">
-                      {new Date(
-                        t.created_at
-                      ).toLocaleDateString()}
+                      {new Date(t.created_at).toLocaleDateString()}
                     </p>
                   </div>
 
